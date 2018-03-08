@@ -1,5 +1,14 @@
 # Software performance analysis
 
+## Considerations
+
+1. For the convenience of testing, the data used is in the order of Key: key_xxx => Value: value_xxx 
+instead of the random data used, so the performance will be improved for leveldb and boltdb without 
+affecting the approximate test results.
+2. The average amount of data written each time is about 22 bytes
+3. Both leveldb and boltdb use mmap to speed up data reads, so there is no difference 
+   in cache performance on read performance.
+
 ## Machine performance:
 
 memory |    disk  |  CPU   | OS
