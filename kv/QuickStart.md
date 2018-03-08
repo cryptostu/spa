@@ -16,8 +16,6 @@ go get github.com/boltdb/bolt
    
 # levelDB
 
-***
-
 ## install
 
 ```
