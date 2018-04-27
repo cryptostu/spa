@@ -150,7 +150,707 @@ leveldb version: Release 1.19
 * 两个测试用例中，做读操作时候，都需要先对key做一次排序，然后再读。
 
 
+## 10GB场景测试
 
+### leveldb
+
+执行 `./pulse load pulserw ~/trx10GB.bin` 导入数据，数据导入之后数据变为12GB左右，属于正常现象。
+
+### 单线程测试情况：
+
+执行 `./pulse sort pulserw ~/trx10GB.bin` 进行单线程读写测试，为了缩短测试的周期，将原先的10分钟脉冲时间修改为5分钟，执行7轮测试之后，得到的数据情景如下所示：
+
+```
+now:Mon Apr 23 10:56:35 2018
+ read:90000 elapsed:10.6247
+now:Mon Apr 23 10:56:35 2018
+ add:210000 delete:0 elapsed:0.255138
+now:Mon Apr 23 11:01:39 2018
+ read:90000 elapsed:3.76854
+now:Mon Apr 23 11:01:40 2018
+ add:210000 delete:30000 elapsed:0.250276
+now:Mon Apr 23 11:06:42 2018
+ read:90000 elapsed:2.48257
+now:Mon Apr 23 11:06:42 2018
+ add:210000 delete:30000 elapsed:0.248712
+now:Mon Apr 23 11:11:44 2018
+ read:90000 elapsed:1.8994
+now:Mon Apr 23 11:11:45 2018
+ add:210000 delete:30000 elapsed:0.2462
+now:Mon Apr 23 11:16:46 2018
+ read:90000 elapsed:1.57583
+now:Mon Apr 23 11:16:46 2018
+ add:210000 delete:30000 elapsed:0.259944
+now:Mon Apr 23 11:21:48 2018
+ read:90000 elapsed:1.34458
+now:Mon Apr 23 11:21:48 2018
+ add:210000 delete:30000 elapsed:0.242511
+now:Mon Apr 23 11:26:50 2018
+ read:90000 elapsed:1.26615
+now:Mon Apr 23 11:26:50 2018
+ add:210000 delete:30000 elapsed:0.236334
+
+```
+
+**根据上述情况可以分析得出：**  
+
+read 90000 keys 的时间刚开始为 10s 左右，随后是 3s 左右，最后时长稳定在1.5s 左右，add 210000keys delete 30000 keys 的时长平均在 0.25s 左右；查看cache 容量在 15GB 左右，因为是 10GB 数据，怀疑数据大量命中 cache；drop cache 到 1GB 左右的时候，时长达到 41s 左右（数据之所以前后会有这么大的差距，主要是因为leveldb 第一次读的时候会打开所需要的 sstable 文件以及 block index 文件，打开之后，这些文件不会关闭，方便下一次读取，所以第一次耗时的原因主要是打开这些文件的耗时），此时 cache 的容量为 1GB 左右，一轮过后，cache 的容量涨到 8GB 左右，具体如下：
+    
+```
+now:Mon Apr 23 11:42:35 2018
+ read:90000 elapsed:41.0381
+now:Mon Apr 23 11:42:35 2018
+ add:210000 delete:30000 elapsed:0.241762
+
+```
+
+此时内存使用情况如下：
+
+![memory.png](https://upload-images.jianshu.io/upload_images/6967649-f08c063f7291879d.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+cpu使用情况：
+
+![cpu.png](https://upload-images.jianshu.io/upload_images/6967649-e797122d8de31894.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+继续测试几轮之后的情况如下：
+
+```
+now:Mon Apr 23 11:47:48 2018
+ read:90000 elapsed:12.4957
+now:Mon Apr 23 11:47:48 2018
+ add:210000 delete:30000 elapsed:0.22138
+now:Mon Apr 23 11:52:54 2018
+ read:90000 elapsed:6.08168
+now:Mon Apr 23 11:52:54 2018
+ add:210000 delete:30000 elapsed:0.235318
+now:Mon Apr 23 11:57:58 2018
+ read:90000 elapsed:3.67622
+now:Mon Apr 23 11:57:58 2018
+ add:210000 delete:30000 elapsed:0.25569
+now:Mon Apr 23 12:03:01 2018
+ read:90000 elapsed:2.58885
+now:Mon Apr 23 12:03:01 2018
+ add:210000 delete:30000 elapsed:0.244801
+now:Mon Apr 23 12:13:05 2018
+ read:90000 elapsed:1.64761
+now:Mon Apr 23 12:13:05 2018
+ add:210000 delete:30000 elapsed:0.230124
+ 
+ now:Mon Apr 23 13:18:24 2018
+ read:90000 elapsed:0.929464
+now:Mon Apr 23 13:18:24 2018
+ add:210000 delete:30000 elapsed:0.233122
+now:Mon Apr 23 13:23:25 2018
+ read:90000 elapsed:0.932501
+now:Mon Apr 23 13:23:25 2018
+ add:210000 delete:30000 elapsed:0.236744
+```
+
+可以看到时间又继续稳定到 1 s 左右。
+
+### 8 线程测试情况
+
+执行 `./tests mread pulserw/ ~/trx10GB.bin 8` 启动 8 条线程测试 10GB 的情况，缓存大小为 161M 具体如下：
+
+![buff.png](https://upload-images.jianshu.io/upload_images/6967649-3e4d243568528e2b.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+此时，数据的读写情况如下所示：
+
+```
+read thread cnt: 8
+
+now:Mon Apr 23 13:53:17 2018
+read:90000 elapsed:6.13213
+now:Mon Apr 23 13:53:18 2018
+add:210000 delete:30000 elapsed:0.217
+```
+
+当缓存大小达到 2.6GB 左右时，
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-35368302c346b670.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+测试情况如下：
+
+```
+read thread cnt: 8
+
+now:Mon Apr 23 13:58:19 2018
+read:90000 elapsed:1.51856
+now:Mon Apr 23 13:58:19 2018
+add:210000 delete:30000 elapsed:0.230256
+```
+当缓存达到 3GB 左右时，
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-b3f7125764295ce3.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+测试情况如下：
+
+```
+read thread cnt: 8
+
+now:Mon Apr 23 14:03:20 2018
+read:90000 elapsed:0.736117
+now:Mon Apr 23 14:03:21 2018
+add:210000 delete:30000 elapsed:0.228423
+```
+
+此时内存使用情况如下：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-4194960c4dfad504.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+cpu使用情况如下：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-dc24f7fc1f4dfea4.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+
+随着内存 cache 的增加，几轮测试之后，内存 cache 的使用量达到 3-4GB 左右， 此时的读性能稳定在 0.2s 左右。
+
+```
+read thread cnt: 8
+
+now:Mon Apr 23 14:08:21 2018
+read:90000 elapsed:0.426303
+now:Mon Apr 23 14:08:21 2018
+add:210000 delete:30000 elapsed:0.233573
+
+now:Mon Apr 23 14:13:22 2018
+read:90000 elapsed:0.395289
+now:Mon Apr 23 14:13:22 2018
+add:210000 delete:30000 elapsed:0.230291
+
+now:Mon Apr 23 14:18:22 2018
+read:90000 elapsed:0.402746
+now:Mon Apr 23 14:18:23 2018
+add:210000 delete:30000 elapsed:0.230094
+
+now:Mon Apr 23 14:23:23 2018
+read:90000 elapsed:0.357059
+now:Mon Apr 23 14:23:23 2018
+add:210000 delete:30000 elapsed:0.232445
+
+now:Mon Apr 23 14:28:24 2018
+read:90000 elapsed:0.338401
+now:Mon Apr 23 14:28:24 2018
+add:210000 delete:30000 elapsed:0.2291
+
+now:Mon Apr 23 14:33:24 2018
+read:90000 elapsed:0.259419
+now:Mon Apr 23 14:33:25 2018
+add:210000 delete:30000 elapsed:0.23363
+
+now:Mon Apr 23 14:38:25 2018
+read:90000 elapsed:0.20226
+now:Mon Apr 23 14:38:25 2018
+add:210000 delete:30000 elapsed:0.227768
+
+now:Mon Apr 23 14:43:25 2018
+read:90000 elapsed:0.200588
+now:Mon Apr 23 14:43:26 2018
+add:210000 delete:30000 elapsed:0.236501
+
+now:Mon Apr 23 14:48:26 2018
+read:90000 elapsed:0.205093
+now:Mon Apr 23 14:48:26 2018
+add:210000 delete:30000 elapsed:0.232268
+```
+此时 iops 的情况大体如下：
+
+![iops.png](https://upload-images.jianshu.io/upload_images/6967649-f87d9eea221403c2.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+**根据iops的图标分析，8线程的情况下，io 耗时明显降低。整体性能是单线程的 5 倍左右，且 cache 的占有量比单线程还少。推测：cache的占有量进一步提升之后，性能还会有所提升。但实际情况下，如此多的 cache 是否都会拿来给 DB 使用，需要根据线上服务器的具体使用情况来评估。**
+
+**_疑问：8线程的情况下，cache为什么一直上不去？_**
+
+***
+
+排除缓存问题，继续测试8线程情况，此时cache的大小为 100M，
+
+```
+now:Mon Apr 23 17:09:28 2018
+ read:90000 elapsed:22.9826
+now:Mon Apr 23 17:09:29 2018
+ add:210000 delete:0 elapsed:0.224792
+```
+
+当cache大小达到10GB的时候，
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-7a39d1dfda832116.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+
+执行情况如下：
+
+```
+now:Mon Apr 23 17:14:32 2018
+ read:90000 elapsed:3.59862
+now:Mon Apr 23 17:14:32 2018
+ add:210000 delete:30000 elapsed:0.238799
+```
+
+当cache达到11G的时候，
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-7689a12acc46cfbb.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+执行情况如下：
+
+```
+now:Mon Apr 23 17:19:34 2018
+ read:90000 elapsed:1.57124
+now:Mon Apr 23 17:19:34 2018
+ add:210000 delete:30000 elapsed:0.232258
+```
+
+当cache达到如下情况的时候，
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-0468af7882088f44.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+执行情况如下：
+
+```
+now:Mon Apr 23 17:24:35 2018
+ read:90000 elapsed:0.847863
+now:Mon Apr 23 17:24:35 2018
+ add:210000 delete:30000 elapsed:0.230939
+```
+
+当cache基本稳定在11GB左右的时候，执行情况如下：
+
+```
+now:Mon Apr 23 17:29:36 2018
+ read:90000 elapsed:0.698113
+now:Mon Apr 23 17:29:36 2018
+ add:210000 delete:30000 elapsed:0.23436
+ 
+ now:Mon Apr 23 17:34:37 2018
+ read:90000 elapsed:0.665424
+now:Mon Apr 23 17:34:37 2018
+ add:210000 delete:30000 elapsed:0.231065
+ 
+ now:Mon Apr 23 17:39:38 2018
+ read:90000 elapsed:0.774737
+now:Mon Apr 23 17:39:39 2018
+ add:210000 delete:30000 elapsed:0.236405
+ 
+ now:Mon Apr 23 17:44:39 2018
+ read:90000 elapsed:0.782709
+now:Mon Apr 23 17:44:40 2018
+ add:210000 delete:30000 elapsed:0.234298
+ 
+ now:Mon Apr 23 17:49:40 2018
+ read:90000 elapsed:0.698601
+now:Mon Apr 23 17:49:41 2018
+ add:210000 delete:30000 elapsed:0.228215
+```
+
+## 1GB 场景测试复现（重新生成数据后）
+
+
+单线程第一次测试情况：
+
+```
+now:Tue Apr 24 13:52:38 2018
+ read:90000 elapsed:43.196
+now:Tue Apr 24 13:52:38 2018
+ add:210000 delete:0 elapsed:0.346635
+```
+
+cache情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-b5ccc7f925f567d3.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+iops情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-d543a188432b9984.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+可以看出，如果完全走磁盘的话，io耗时还是挺严重的。
+
+随后几轮测试情况：
+
+```
+now:Tue Apr 24 13:57:52 2018
+ read:90000 elapsed:13.5408
+now:Tue Apr 24 13:57:52 2018
+ add:210000 delete:30000 elapsed:0.345466
+ 
+ now:Tue Apr 24 14:02:59 2018
+ read:90000 elapsed:6.20058
+now:Tue Apr 24 14:02:59 2018
+ add:210000 delete:30000 elapsed:0.333215
+ 
+ now:Tue Apr 24 14:08:03 2018
+ read:90000 elapsed:3.75586
+now:Tue Apr 24 14:08:03 2018
+ add:210000 delete:30000 elapsed:0.362021
+ 
+ now:Tue Apr 24 14:13:06 2018
+ read:90000 elapsed:2.87561
+now:Tue Apr 24 14:13:07 2018
+ add:210000 delete:30000 elapsed:0.331009
+```
+
+中途清理一次缓存之后：
+
+```
+now:Tue Apr 24 14:18:52 2018
+ read:90000 elapsed:45.3277
+now:Tue Apr 24 14:18:53 2018
+ add:210000 delete:30000 elapsed:0.321008
+```
+iops的耗时明显上来了：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-c3872004f577b6a4.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+继续测试几轮得出的数据：
+
+```
+now:Tue Apr 24 14:24:07 2018
+ read:90000 elapsed:13.9351
+now:Tue Apr 24 14:24:08 2018
+ add:210000 delete:30000 elapsed:0.310101
+
+now:Tue Apr 24 14:29:14 2018
+ read:90000 elapsed:6.43357
+now:Tue Apr 24 14:29:14 2018
+ add:210000 delete:30000 elapsed:0.315123
+ 
+ now:Tue Apr 24 14:34:18 2018
+ read:90000 elapsed:3.77586
+now:Tue Apr 24 14:34:19 2018
+ add:210000 delete:30000 elapsed:0.308785
+ 
+ now:Tue Apr 24 14:39:22 2018
+ read:90000 elapsed:2.93462
+now:Tue Apr 24 14:39:22 2018
+ add:210000 delete:30000 elapsed:0.307338
+ 
+ now:Tue Apr 24 14:44:24 2018
+ read:90000 elapsed:2.13011
+now:Tue Apr 24 14:44:25 2018
+ add:210000 delete:30000 elapsed:0.305482
+ 
+ now:Tue Apr 24 14:49:27 2018
+ read:90000 elapsed:1.89997
+now:Tue Apr 24 14:49:27 2018
+ add:210000 delete:30000 elapsed:0.304472
+
+now:Tue Apr 24 14:54:29 2018
+ read:90000 elapsed:1.51756
+now:Tue Apr 24 14:54:29 2018
+ add:210000 delete:30000 elapsed:0.301668
+```
+
+因为在整个测试情景中，数据占有的cache一直比较高，考虑到线上业务不可能将大量内存拿给leveldb做cache，所以尝试写一个程序占用机器内存(占有10GB实际物理内存)，仅给leveldb分出来少量内存使用，这时的测试场景如下：
+
+```
+now:Tue Apr 24 15:00:09 2018
+ read:90000 elapsed:40.0204
+now:Tue Apr 24 15:00:10 2018
+ add:210000 delete:30000 elapsed:0.582522
+```
+
+继续占用，当cache达到700M左右时，执行情况如下：
+
+```
+now:Tue Apr 24 15:06:00 2018
+ read:90000 elapsed:50.4235
+now:Tue Apr 24 15:06:01 2018
+ add:210000 delete:30000 elapsed:0.723389
+ 
+ now:Tue Apr 24 15:11:50 2018
+ read:90000 elapsed:48.5304
+now:Tue Apr 24 15:11:50 2018
+ add:210000 delete:30000 elapsed:0.339385
+```
+
+这时内存占有量如下：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-a21d981a8fe7b6a0.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+iops使用场景：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-30e1700064ad368d.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 10GB 8线程场景（修改之后）
+
+```
+now:Tue Apr 24 15:18:27 2018
+ read:90000 elapsed:24.4636
+now:Tue Apr 24 15:18:28 2018
+ add:210000 delete:0 elapsed:0.334705
+ 
+ now:Tue Apr 24 15:23:46 2018
+ read:90000 elapsed:17.7896
+now:Tue Apr 24 15:23:46 2018
+ add:210000 delete:30000 elapsed:0.35213
+ 
+ now:Tue Apr 24 15:29:06 2018
+ read:90000 elapsed:19.3754
+now:Tue Apr 24 15:29:06 2018
+ add:210000 delete:30000 elapsed:0.33059
+ 
+ now:Tue Apr 24 15:34:25 2018
+ read:90000 elapsed:19.1046
+now:Tue Apr 24 15:34:25 2018
+ add:210000 delete:30000 elapsed:0.340138
+ 
+ now:Tue Apr 24 15:39:45 2018
+ read:90000 elapsed:19.8558
+now:Tue Apr 24 15:39:46 2018
+ add:210000 delete:30000 elapsed:0.316071
+```
+
+此时，cache使用情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-0d5db2d49ceae675.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+iops情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-09a75568d86d3ce7.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+cpu使用情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-3f5a0defb5785bdd.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+#### 总结：在这个过程中，iops耗时较为严重，8线程较单线程性能上有明显的提升，内存已经全部使用完毕，并且使用少量的swap分区，在脉冲到来时发现cpu的资源使用也明显增高。经过几轮测试，10GB数据量，90000keys 读耗时平均稳定在 20s 左右。
+
+
+### 10GB 8线程场景测试（修改后(关闭swap)，swap关闭之后缓存相对稳定到将近1GB左右）
+
+```
+now:Tue Apr 24 16:20:18 2018
+read:90000 elapsed:24.3973
+now:Tue Apr 24 16:20:18 2018
+add:210000 delete:0 elapsed:0.333606
+ 
+now:Tue Apr 24 16:25:39 2018
+read:90000 elapsed:20.8294
+now:Tue Apr 24 16:25:39 2018
+add:210000 delete:30000 elapsed:0.373496
+ 
+now:Tue Apr 24 16:30:59 2018
+read:90000 elapsed:19.425
+now:Tue Apr 24 16:30:59 2018
+add:210000 delete:30000 elapsed:0.337532
+
+now:Tue Apr 24 16:36:19 2018
+read:90000 elapsed:19.7889
+now:Tue Apr 24 16:36:20 2018
+add:210000 delete:30000 elapsed:0.348685
+```
+
+#### 小结：可以看到几轮测试之后，耗时平均稳定在20s左右
+
+### 10GB 16线程场景测试（修改后(关闭swap)swap关闭之后缓存相对稳定到将近1GB左右）
+
+```
+now:Tue Apr 24 16:06:03 2018
+ read:90000 elapsed:20.6467
+now:Tue Apr 24 16:06:03 2018
+ add:210000 delete:0 elapsed:0.335697
+ 
+now:Tue Apr 24 16:11:21 2018
+ read:90000 elapsed:17.5517
+now:Tue Apr 24 16:11:21 2018
+ add:210000 delete:30000 elapsed:0.344421
+ 
+ now:Tue Apr 24 16:16:39 2018
+ read:90000 elapsed:17.7426
+now:Tue Apr 24 16:16:40 2018
+ add:210000 delete:30000 elapsed:0.330766
+```
+cache使用情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-4b2a4eb4e7059b0a.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+#### 小结：可以看到当cache一直保持在这个水准之时（关闭swap），读90000keys的平均时长为 17s 左右。
+
+
+### 10GB 32线程场景测试（修改后(关闭swap)swap关闭之后缓存相对稳定到将近1GB左右）
+
+```
+now:Tue Apr 24 17:01:54 2018
+read:90000 elapsed:18.8075
+now:Tue Apr 24 17:01:54 2018
+add:210000 delete:0 elapsed:0.361226
+ 
+now:Tue Apr 24 17:07:11 2018
+read:90000 elapsed:16.0896
+now:Tue Apr 24 17:07:11 2018
+add:210000 delete:30000 elapsed:0.360031
+
+now:Tue Apr 24 17:12:27 2018
+ read:90000 elapsed:16.2897
+now:Tue Apr 24 17:12:28 2018
+ add:210000 delete:30000 elapsed:0.336072
+```
+#### iops
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-dd17e65dcd57bba7.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+#### cpu
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-70d40bb7f0ba39fc.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+#### 小结：线程数开到32时，平均耗时在16s左右，相比16线程有1s左右的提升，考虑到增加线程数量带来的收益并不是很明显，没有继续增加线程的数量。
+
+
+### rocksdb
+
+
+## 50GB场景测试
+
+
+### leveldb
+
+### 单线程场景测试
+
+cache使用情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-8cf367906c4b22cc.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+iops使用情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-8e7deb8b0e26aa21.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+cpu使用情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-8945b9685c4d21c9.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+耗时测试情况如下：
+
+```
+now:Tue Apr 24 19:20:20 2018
+ read:90000 elapsed:274.918（4min30s左右）
+now:Tue Apr 24 19:20:21 2018
+ add:210000 delete:0 elapsed:0.324584
+ 
+ now:Tue Apr 24 19:30:03 2018
+ read:90000 elapsed:281.876
+now:Tue Apr 24 19:30:03 2018
+ add:210000 delete:30000 elapsed:0.363961
+ 
+ now:Tue Apr 24 19:38:24 2018
+ read:90000 elapsed:200.644
+now:Tue Apr 24 19:38:24 2018
+ add:210000 delete:30000 elapsed:0.370086
+ 
+ 前几次速度较慢，猜想在打开大量的sstable文件，snappy压缩的过程中也会有一定的耗时。
+ 
+now:Tue Apr 24 19:45:00 2018
+ read:90000 elapsed:95.2789
+now:Tue Apr 24 19:45:00 2018
+ add:210000 delete:30000 elapsed:0.384663
+ 
+ now:Tue Apr 24 19:51:58 2018
+ read:90000 elapsed:117.219
+now:Tue Apr 24 19:51:58 2018
+ add:210000 delete:30000 elapsed:0.352128
+ 
+ now:Tue Apr 24 19:58:37 2018
+ read:90000 elapsed:95.0505
+now:Tue Apr 24 19:58:37 2018
+ add:210000 delete:30000 elapsed:0.36115
+```
+
+**可以看出，此时cpu的资源大量使用，经分析`iowait`耗费了大量的 cpu 资源，可以发现瓶颈大多在io上，cpu的使用量平均在60%左右，几轮之后，读操作平均耗时稳定在100s左右。**
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-c6c445dbcaa4dddf.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+**通过perf工具，可以发现，crc32校验耗费了不少cpu资源，但是此时cpu的使用量并没有达到瓶颈，所以并不赞同上次他们所提到的避免crc32校验的思路，在cpu没有达到瓶颈的时候，数据的安全性还是有一定的必要耗费一定的时间来保证的。**
+
+### 8线程场景测试
+
+```
+now:Wed Apr 25 10:44:29 2018
+ read:90000 elapsed:58.2093
+now:Wed Apr 25 10:44:29 2018
+ add:210000 delete:0 elapsed:0.378422
+ 
+ now:Wed Apr 25 11:03:16 2018
+ read:90000 elapsed:58.6239
+now:Wed Apr 25 11:03:17 2018
+ add:210000 delete:30000 elapsed:0.343294
+ 
+ now:Wed Apr 25 11:09:05 2018
+ read:90000 elapsed:45.9392
+now:Wed Apr 25 11:09:06 2018
+ add:210000 delete:30000 elapsed:0.360407
+ 
+ now:Wed Apr 25 11:14:52 2018
+ read:90000 elapsed:46.1371
+now:Wed Apr 25 11:14:52 2018
+ add:210000 delete:30000 elapsed:0.365829
+ 
+ now:Wed Apr 25 11:20:36 2018
+ read:90000 elapsed:42.5826
+now:Wed Apr 25 11:20:36 2018
+ add:210000 delete:30000 elapsed:0.328528
+ 
+ now:Wed Apr 25 11:26:21 2018
+ read:90000 elapsed:44.9444
+now:Wed Apr 25 11:26:21 2018
+ add:210000 delete:30000 elapsed:0.351337
+ 
+ now:Wed Apr 25 11:32:05 2018
+ read:90000 elapsed:42.609
+now:Wed Apr 25 11:32:05 2018
+ add:210000 delete:30000 elapsed:0.363173
+```
+
+**可以看到多轮测试之后，数据基本稳定在45s左右，性能有点差。**
+
+cache 情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-aba9225f882ca13c.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+cpu：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-ecb2e07e1248c2ce.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+iops：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-9ecf5badce23b6a2.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+### 16线程场景测试
+
+cache使用情况：
+
+![image.png](https://upload-images.jianshu.io/upload_images/6967649-a98dccd28fb8f783.png?imageMogr2/auto-orient/strip%7CimageView2/2/w/1240)
+
+
+```
+now:Wed Apr 25 13:37:55 2018
+ read:90000 elapsed:50.0132
+now:Wed Apr 25 13:37:55 2018
+ add:210000 delete:0 elapsed:0.358963
+ 
+ now:Wed Apr 25 13:48:47 2018
+ read:90000 elapsed:51.7314
+now:Wed Apr 25 13:48:48 2018
+ add:210000 delete:30000 elapsed:0.365789
+ 
+ now:Wed Apr 25 13:59:30 2018
+ read:90000 elapsed:42.6379
+now:Wed Apr 25 13:59:31 2018
+ add:210000 delete:30000 elapsed:0.342867
+ 
+ now:Wed Apr 25 14:10:17 2018
+ read:90000 elapsed:46.4648
+now:Wed Apr 25 14:10:18 2018
+ add:210000 delete:30000 elapsed:0.33144
+```
+
+**小结：16线程之后性能并没有提升，说明单纯的增加线程数量对性能没有多大影响，主要是io已经成为整个数据库的瓶颈。**
+
+
+### rocksdb
+
+
+
+### 小结
+
+> 10GB与50GB的场景下，leveldb与rocksdb使用的均是默认参数，没有做任何优化。
+
+***
 
 
 
