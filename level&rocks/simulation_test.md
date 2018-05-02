@@ -231,7 +231,7 @@ add:210000 delete:30000 elapsed:0.348685
 |       32 | 16s 左右 |   40%-43% | 1GB 左右       |
 
 
-##### 10GB，leveldb使用max_open_files=5000:
+##### 10GB，leveldb使用max_open_files=5000 并开启bloom_filter:
 | 线程数量 | 耗时 | cpu使用率 |cache|
 |----------|------|-----------|----|
 |        1 |   17.3-21s 左右(偶尔会有28s左右)   |     90%左右      |900M-1.3GB
