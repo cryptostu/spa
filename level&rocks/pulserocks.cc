@@ -78,7 +78,11 @@ void prepareReadKeys(std::ifstream &fin, std::vector<std::string> &readKeys,
     readKeys.emplace_back(keybuf, keysize);
 
     fin.read((char*)&valuesize, 2);
-    assert(valuesize == 0);
+    assert((valuesize >= 30 && valuesize <=101) || valuesize==0);
+    if (valuesize > 0) {
+        fin.read(valuebuf, valuesize);
+    }
+    //assert(valuesize == 0);
   }
 }
 
@@ -190,7 +194,7 @@ int main(int argc, char *argv[])
   Options options;
   //options.IncreaseParallelism();
   //options.OptimizeLevelStyleCompaction();
-  options.OptimizeForPointLookup(512);   // for OptimizeForPointLookup
+  //options.OptimizeForPointLookup(512);   // for OptimizeForPointLookup
 
   //options.write_buffer_size = 4 << 20;  // for OptimizeForPointLookup
   // options.max_write_buffer_number = 2;
@@ -238,6 +242,9 @@ int main(int argc, char *argv[])
   std::cout << std::flush;
   assert(s.ok());
 
+  if (cmd == "sleep") {
+      sleep(9000);
+  }
 
   int readkeylength = pulse*0.3;
   int addkeylength = pulse*0.7;
@@ -316,7 +323,6 @@ int main(int argc, char *argv[])
       readKeys.size() << " elapsed:" << elapsed_seconds.count() << std::endl << std::flush;
 
     start = std::chrono::system_clock::now();
-    // FIXME: statistics runing time for get/add/delete operation start
     WriteBatch batch;
 
     for (auto p: addKeys) {

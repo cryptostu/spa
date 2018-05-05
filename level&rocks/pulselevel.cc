@@ -27,7 +27,7 @@ void writer() {
   uint64_t i = 0;
   unsigned short keyLen, valueLen;
   char keyBuf[40];
-  char valueBuf[100];
+  char valueBuf[101];
 
 
   while (true) {
@@ -76,11 +76,14 @@ void prepareReadKeys(std::ifstream &fin, std::vector<std::string> &readKeys,
   for (int i = 0; i < readlength; ++i) {
     fin.read((char*)&keysize, 2);
     fin.read(keybuf, keysize);
-
+    assert(keysize == 40);
     readKeys.emplace_back(keybuf, keysize);
 
     fin.read((char*)&valuesize, 2);
-    assert(valuesize == 0);
+    assert((valuesize >=30 && valuesize <=101) || valuesize == 0);
+    if (valuesize) {
+        fin.read(valuebuf, valuesize);
+    }
   }
 }
 
@@ -177,7 +180,7 @@ int main(int argc, char *argv[])
     leveldb::Options options;
     //options.write_buffer_size = 64 << 20;
     options.filter_policy = NewBloomFilterPolicy(10);
-    // options.block_cache = NewLRUCache(512 << 20);
+    // options.block_cache = NewLRUCache(256 << 20);
 
   //options.IncreaseParallelism();
   //options.OptimizeLevelStyleCompaction();
@@ -300,7 +303,7 @@ int main(int argc, char *argv[])
 
     start = std::chrono::system_clock::now();
     // FIXME: statistics runing time for get/add/delete operation start
-    leveldb::WriteBatch batch;
+    //leveldb::WriteBatch batch;
 
     // for (auto p: addKeys) {
     //   batch.Put(p.first, p.second);
