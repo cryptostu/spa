@@ -177,7 +177,7 @@ leveldb version: Release 1.19
 * `sync; echo 3 > /proc/sys/vm/drop_caches` 防止page cache带来问题
 * 如果需要测试bloom filter的性能，必须在导入数据的时候，就要带着bloom filter的选项；如果测试不带bloom filter的选项，需要在导入数据库的时候就不指定bloom filter；
 * 测试结果中，CPU是通过TOP统计出的峰值，memory是通过TOP统计的RES的峰值
-* 因为UTXO的场景是脉冲式的，且脉冲时间是10分钟，所以可以认为下一轮脉冲开始的时候，前一轮的compaction是结束的状态，也就是说，下一轮脉冲的读操作不会受到前一轮compaction的影响; 使用测试用例2测试数据库过程中，为了防止compaction带来的性能影响，导完数据库以后，需要保持open数据库一段时间，保证之前的写操作compaction结束后再进行测试。但是测试过程中发现，leveldb无论如何都会做compaction，即使导完数据库后，保持数据打开很久以后，保证测试过程中只有读操作，仍然有compaction，为了防止测试代码有误还加入了下面的断点，然而断点没有触发：
+* 因为UTXO的场景是脉冲式的，且脉冲时间是10分钟，所以可以认为下一轮脉冲开始的时候，前一轮的compaction是结束的状态，也就是说，下一轮脉冲的读操作不会受到前一轮compaction的影响; 使用测试用例2测试数据库过程中，为了防止compaction带来的性能影响，导完数据库以后，需要保持open数据库一段时间，保证之前的写操作compaction结束后再进行测试。但是测试过程中发现，leveldb无论如何都会做compaction，即使导完数据库后，保持数据打开很久以后，保证测试过程中只有读操作，仍然有compaction，为了防止测试代码有误还加入了下面的断点，然而断点没有触发(测试文件，见pulselevel.cc)：
 ```
 (gdb) info break
 Num     Type           Disp Enb Address            What
@@ -262,11 +262,11 @@ add:210000 delete:30000 elapsed:0.348685
 ### rocksdb
 
 #### 测试命令
-* `/eatmem 13958643712`   # 吃掉13G，rocksdb本身占用内存较多，所以这里指定的内存相对leveldb要小一些
+* `/eatmem 15032385536` 
 * `./pulserocks load pulserw ~/trx10GB.bin 1 1 ` 生成的数据导入数据库，数据导入之后数据变为12GB左右，属于正常现象。pulserw是数据库名字。
 * `./pulserocks sort pulserw ~/trx10GB.bin 1 1` 用于进行单线程读写测试
 * `./pulserocks mread pulserw ~/trx10GB.bin 8 300` 用于进行8线程的read
-* `./pulserocks mread pulserw ~/trx10GB.bin 16 300** 用于进行16线程的read
+* `./pulserocks mread pulserw ~/trx10GB.bin 16 300` 用于进行16线程的read
 
 
 #### 10GB，rocksdb使用默认option
@@ -279,11 +279,9 @@ add:210000 delete:30000 elapsed:0.348685
 
 #### 小结
 * leveldb比rocksdb消耗更多的CPU，消耗更多的内存
-* 定制了max_open_files和bloom filter后，leveldb的性能只是比rocksdb差了一点点，而使用的内存要比rocksdb少了很多（前提是rocksdb没有发生compaction）
-* 测试结果也是比较符合逻辑的
-  * 理论上，在其它资源一样的情况下，rocksdb和leveldb在读性能上应该差距不大
-  * rocksdb本身就对并发写做了很多优化，而我们这次的比较主要是放在了全读上
-  * rocksdb默认64MB sst文件，而leveldb默认2MB sst文件，所以在打开文件数量一样的情况下，rocksdb在内存中可存放更多的index block，从而加速读
+* 定制了max_open_files和bloom filter后，leveldb的性能只是比rocksdb差了一点点，使用的内存也比rocksdb多了（前提是rocksdb没有发生compaction）
+* 理论上，在其它资源一样的情况下，rocksdb和leveldb在读性能上应该差距不大，而测试中发现，即使是全读，leveldb也要做compaction
+* rocksdb默认64MB sst文件，而leveldb默认2MB sst文件，所以在打开文件数量一样的情况下，rocksdb在内存中可存放更多的index block，从而加速读
 
 ***
 
@@ -305,7 +303,6 @@ add:210000 delete:30000 elapsed:0.348685
 |       16 | 750M | 15-36s 左右  |      106% |
 
 * 16线程之后性能并没有提升，说明单纯的增加线程数量对性能没有多大影响，主要是io已经成为整个数据库的瓶颈
-* 虽然内存占用看起来没有达到100%，但是因为使用的是top命令，统计周期和被测试程序的运行周期不同，所以，有可能在某个短暂的时间cpu已经成为了瓶颈
 
 #### 50GB, leveldb使用option.max_open_file = 11000,bloom_filter(10):
 | 线程数量 | 内存 | 耗时         | cpu利用率 |
@@ -413,11 +410,11 @@ total number of keys: 1210292943, total size in bytes: 107374182600
 #### 总结
 
 * 测试过程中，随机写21000个key，无论rocksdb还是leveldb耗时都是大约0.5s，所以写性能完全不是问题
-* 导数据到两个DB的过程中，发现leveldb随机写性能比rocksdb明显要差，但是UTXO的随机写场景对leveldb来说还是够用的，对客户端节点来说，如果以后数据量进一步增大（>100GB）的时候，客户端首次同步，耗时会非常长。
+* 导数据到两个DB的过程中，发现leveldb随机写性能比rocksdb明显要差，但是UTXO的随机写场景对leveldb来说还是够用的;对客户端节点来说，如果以后数据量进一步增大（>100GB）的时候，客户端首次同步，耗时会非常长，这时rocksdb的优势就明显了。
 * leveldb 读过程中（没有写和删除操作），在LOG中发现有compaction，iostat也可以看到写操作,所以导致内存和CPU波动较大（compaction占用内存和CPU），这是leveldb的一个弱点。
 * 除了100GB的情况，本测试看起来对leveldb不是很公平，因为测试过程中,leveldb有compaction（测试前，1. 保持DB打开，且确认日志中没有compaction后才开始测试，2. 只发读操作，从leveldb日志中仍然可以看到compaction，并且无法确定什么时候compaction终止, iostat也可以看到写操作），而rocksdb没有compaction
 * 因为compaction的问题，leveldb比rocksdb有更高的读写放大问题，这么高的读写放大对ssd的性能和寿命都是挑战
-* 10GB场景下，leveldb经过简单优化耗时可以降低为原来的1/10; 优化后的rocksdb相比无优化的leveldb，耗时可以降低为无优化leveldb的1/20，且占用内存更少，cpu利用率也更少，ssd寿命会更长
+* 10GB场景下，leveldb经过简单优化耗时可以降低为原来的1/10; 开启多线程的rocksdb相比无优化的leveldb，耗时可以降低为无优化leveldb的1/20，且占用内存更少，cpu利用率也更少，ssd寿命会更长
 
 #### TODO
 
