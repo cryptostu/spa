@@ -202,7 +202,7 @@ Num     Type           Disp Enb Address            What
 * `./pulselevel mread pulserw ~/trx10GB.bin 16` 用于进行16线程的read
 * `./pulselevel mread pulserw ~/trx10GB.bin 32` 用于进行32线程的read
 
-执行以上命令，输出如下：
+执行单线程读写测试，输出如下：
 ```
 now:Tue Apr 24 16:25:39 2018
 read:90000 elapsed:20.8294
