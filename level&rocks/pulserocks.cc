@@ -82,7 +82,6 @@ void prepareReadKeys(std::ifstream &fin, std::vector<std::string> &readKeys,
     if (valuesize > 0) {
         fin.read(valuebuf, valuesize);
     }
-    //assert(valuesize == 0);
   }
 }
 
