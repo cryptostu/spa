@@ -202,13 +202,8 @@ Num     Type           Disp Enb Address            What
 * `./pulselevel mread pulserw ~/trx10GB.bin 16` 用于进行16线程的read
 * `./pulselevel mread pulserw ~/trx10GB.bin 32` 用于进行32线程的read
 
-执行以上命令，输出如下：
+执行单线程读写测试，输出如下：
 ```
-now:Tue Apr 24 16:20:18 2018
-read:90000 elapsed:24.3973
-now:Tue Apr 24 16:20:18 2018
-add:210000 delete:0 elapsed:0.333606
- 
 now:Tue Apr 24 16:25:39 2018
 read:90000 elapsed:20.8294
 now:Tue Apr 24 16:25:39 2018
@@ -225,7 +220,7 @@ now:Tue Apr 24 16:36:20 2018
 add:210000 delete:30000 elapsed:0.348685
 ```
 
-* 以上结果输出了4轮的测试，read:xxx 表示读key的数量，add：xxx表示插入key的数量，delete:xxx表示删除key的数量，elapsed表示对应操作的耗时，单位是秒
+* 以上结果输出了3 轮的测试，read:xxx 表示读key的数量，add：xxx表示插入key的数量，delete:xxx表示删除key的数量，elapsed表示对应操作的耗时，单位是秒
 * 这个结果是测试用例1的测试，测试用例2需要简单调整测试代码，调整后add和delete的数量会变成0，之后的测试主要以测试用例2为主
 
 #### 测试结果
