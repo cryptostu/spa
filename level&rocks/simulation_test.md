@@ -415,9 +415,11 @@ total number of keys: 1210292943, total size in bytes: 107374182600
 * 除了100GB的情况，本测试看起来对leveldb不是很公平，因为测试过程中,leveldb有compaction（测试前，1. 保持DB打开，且确认日志中没有compaction后才开始测试，2. 只发读操作，从leveldb日志中仍然可以看到compaction，并且无法确定什么时候compaction终止, iostat也可以看到写操作），而rocksdb没有compaction
 * 因为compaction的问题，leveldb比rocksdb有更高的读写放大问题，这么高的读写放大对ssd的性能和寿命都是挑战
 * 10GB场景下，leveldb经过简单优化耗时可以降低为原来的1/10; 开启多线程的rocksdb相比无优化的leveldb，耗时可以降低为无优化leveldb的1/20，且占用内存更少，cpu利用率也更少，ssd寿命会更长
+* leveldb compaction结束后，读操作又触发了compaction(和缺点相比，优点微不足道)
+  * 优点：读过程会记录在LSM tree里面第一个被读的文件，如果读到这个文件，可能意味着相邻的区域也会被读到，而这个文件可能会和high level文件存在overlap，经过compaction，可以降低读这部分区域的开销，这个工作只有在写操作引起的compaction处于空闲的状态下，且读操作的第一个文件是低level的文件才会触发。降低了空间放大问题，减少了用IO的读放大。
+  * 缺点：compaction增加了读写放大，降低了性能，减少ssd寿命
 
 #### TODO
 
 * 集成rocksdb到真实的UTXO验证场景下，使用真实的数据测试，而不是模拟测试
 * 使用1 到1.2 billion的整数按照大端生成40字节的key，按照随机的方式导入的数据库生成100GB的DB用于测试
-* 调查leveldb compaction触发机制以及compaction机制,为什么读的时候会有大量compaction
